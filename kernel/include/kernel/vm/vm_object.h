@@ -12,6 +12,7 @@
 #include <kernel/vm/vm_page_list.h>
 #include <lib/user_copy/user_ptr.h>
 #include <list.h>
+#include <magenta/types.h>
 #include <mxtl/array.h>
 #include <mxtl/macros.h>
 #include <mxtl/ref_counted.h>
@@ -25,7 +26,11 @@
 
 class VmObject : public mxtl::RefCounted<VmObject> {
 public:
-    static mxtl::RefPtr<VmObject> Create(uint32_t pmm_alloc_flags, uint64_t size);
+    static mxtl::RefPtr<VmObject> Create(uint32_t pmm_alloc_flags, uint64_t size,
+                                         uint32_t device_mmu_flags = 0);
+
+    static mxtl::RefPtr<VmObject> CreateFromPhysical(mx_paddr_t paddr, mx_size_t size,
+                                                     uint32_t device_mmu_flags);
 
     static mxtl::RefPtr<VmObject> CreateFromROData(const void* data,
                                                    size_t size);
@@ -66,9 +71,11 @@ public:
 
     size_t AllocatedPages() const;
 
+    inline uint32_t DeviceMmuFlags() const { return device_mmu_flags_; }
+
 private:
     // private constructor (use Create())
-    explicit VmObject(uint32_t pmm_alloc_flags);
+    explicit VmObject(uint32_t pmm_alloc_flags, uint32_t device_mmu_flags = 0);
 
     // private destructor, only called from refptr
     ~VmObject();
@@ -100,6 +107,8 @@ private:
     // members
     uint64_t size_ = 0;
     uint32_t pmm_alloc_flags_ = PMM_ALLOC_FLAG_ANY;
+    // Additional arch_mmu_flags for device memory VMOs
+    uint32_t device_mmu_flags_ = 0;
     mutable Mutex lock_;
 
     // a tree of pages

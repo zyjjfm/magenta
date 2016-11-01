@@ -15,6 +15,7 @@
 #include <dev/interrupt.h>
 #include <dev/udisplay.h>
 #include <kernel/vm.h>
+#include <kernel/vm/vm_object.h>
 #include <lib/user_copy.h>
 #include <lib/user_copy/user_ptr.h>
 
@@ -25,10 +26,20 @@
 #include <magenta/process_dispatcher.h>
 #include <magenta/syscalls/pci.h>
 #include <magenta/user_copy.h>
+#include <magenta/vm_object_dispatcher.h>
 
 #include "syscalls_priv.h"
 
 #define LOCAL_TRACE 0
+
+#if ARCH_X86_64
+#define ALLOC_PHYS_CACHE_POLICY   ARCH_MMU_FLAG_CACHED
+#define ALLOC_CONTIG_CACHE_POLICY ARCH_MMU_FLAG_CACHED
+#else
+// for now assume other architectures require uncached device memory
+#define ALLOC_PHYS_CACHE_POLICY   ARCH_MMU_FLAG_UNCACHED_DEVICE
+#define ALLOC_CONTIG_CACHE_POLICY ARCH_MMU_FLAG_UNCACHED_DEVICE
+#endif
 
 static_assert(MX_CACHE_POLICY_CACHED == ARCH_MMU_FLAG_CACHED,
               "Cache policy constant mismatch - CACHED");
@@ -178,6 +189,78 @@ mx_status_t sys_alloc_device_memory(mx_handle_t hrsrc, uint32_t len,
     }
 
     return NO_ERROR;
+}
+
+static mx_status_t sys_alloc_common(mxtl::RefPtr<VmObject> vmo, mx_size_t size,
+                                    user_ptr<mx_handle_t> out) {
+    // always immediately commit memory to the object
+    int64_t committed = vmo->CommitRangeContiguous(0, size, PAGE_SIZE_SHIFT);
+    if (committed < 0 || (size_t)committed < size) {
+        LTRACEF("failed to allocate enough pages (asked for %zu, got %zu)\n", size / PAGE_SIZE,
+                (size_t)committed / PAGE_SIZE);
+        return ERR_NO_MEMORY;
+    }
+
+    // create a Vm Object dispatcher
+    mxtl::RefPtr<Dispatcher> dispatcher;
+    mx_rights_t rights;
+    mx_status_t result = VmObjectDispatcher::Create(mxtl::move(vmo), &dispatcher, &rights);
+    if (result != NO_ERROR)
+        return result;
+
+    // create a handle and attach the dispatcher to it
+    HandleUniquePtr handle(MakeHandle(mxtl::move(dispatcher), rights));
+    if (!handle)
+        return ERR_NO_MEMORY;
+
+    auto up = ProcessDispatcher::GetCurrent();
+
+    if (out.copy_to_user(up->MapHandleToValue(handle.get())) != NO_ERROR)
+        return ERR_INVALID_ARGS;
+
+    up->AddHandle(mxtl::move(handle));
+    return NO_ERROR;
+}
+
+mx_status_t sys_alloc_physical_memory(mx_handle_t hrsrc, mx_paddr_t paddr, mx_size_t size,
+                                      user_ptr<mx_handle_t> out) {
+    LTRACEF("paddr %p size 0x%zu\n", (void *)paddr, size);
+
+    if (size == 0) return ERR_INVALID_ARGS;
+
+    // TODO: finer grained validation
+    mx_status_t status;
+    if ((status = validate_resource_handle(hrsrc)) < 0) {
+        return status;
+    }
+
+    // create a vm object
+    mxtl::RefPtr<VmObject> vmo = VmObject::CreateFromPhysical(paddr, size, ALLOC_PHYS_CACHE_POLICY);
+    if (!vmo)
+        return ERR_NO_MEMORY;
+
+    return sys_alloc_common(vmo, size, out);
+}
+
+mx_status_t sys_alloc_contiguous_memory(mx_handle_t hrsrc, mx_size_t size,
+                                        user_ptr<mx_handle_t> out) {
+    LTRACEF("size 0x%zu\n", size);
+
+    if (size == 0) return ERR_INVALID_ARGS;
+
+    // TODO: finer grained validation
+    mx_status_t status;
+    if ((status = validate_resource_handle(hrsrc)) < 0) {
+        return status;
+    }
+
+    size = ROUNDUP_PAGE_SIZE(size);
+    // create a vm object
+    mxtl::RefPtr<VmObject> vmo = VmObject::Create(PMM_ALLOC_FLAG_ANY, size, ALLOC_CONTIG_CACHE_POLICY);
+    if (!vmo)
+        return ERR_NO_MEMORY;
+
+    return sys_alloc_common(vmo, size, out);
 }
 
 #if ARCH_X86

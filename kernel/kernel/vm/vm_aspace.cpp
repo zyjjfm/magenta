@@ -489,6 +489,9 @@ status_t VmAspace::MapObject(mxtl::RefPtr<VmObject> vmo, const char* name, uint6
     // hold the vmm lock for the rest of the function
     AutoLock a(lock_);
 
+    // Apply arch_mmu_flags for device memory VMOs
+    arch_mmu_flags |= vmo->DeviceMmuFlags();
+
     // allocate a region and put it in the aspace list
     auto r = AllocRegion(name, size, vaddr, align_pow2, min_alloc_gap, vmm_flags, arch_mmu_flags);
     if (!r) {

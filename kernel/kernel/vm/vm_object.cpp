@@ -42,8 +42,8 @@ static size_t OffsetToIndex(uint64_t offset) {
     return static_cast<size_t>(index64);
 }
 
-VmObject::VmObject(uint32_t pmm_alloc_flags)
-    : pmm_alloc_flags_(pmm_alloc_flags) {
+VmObject::VmObject(uint32_t pmm_alloc_flags, uint32_t device_mmu_flags)
+    : pmm_alloc_flags_(pmm_alloc_flags), device_mmu_flags_(device_mmu_flags) {
     LTRACEF("%p\n", this);
 }
 
@@ -61,13 +61,14 @@ VmObject::~VmObject() {
     magic_ = 0;
 }
 
-mxtl::RefPtr<VmObject> VmObject::Create(uint32_t pmm_alloc_flags, uint64_t size) {
+mxtl::RefPtr<VmObject> VmObject::Create(uint32_t pmm_alloc_flags, uint64_t size,
+                                        uint32_t arch_mmu_flags) {
     // there's a max size to keep indexes within range
     if (size > MAX_SIZE)
         return nullptr;
 
     AllocChecker ac;
-    auto vmo = mxtl::AdoptRef(new (&ac) VmObject(pmm_alloc_flags));
+    auto vmo = mxtl::AdoptRef(new (&ac) VmObject(pmm_alloc_flags, arch_mmu_flags));
     if (!ac.check())
         return nullptr;
 
@@ -146,6 +147,32 @@ status_t VmObject::AddPage(vm_page_t* p, uint64_t offset) {
         return ERR_OUT_OF_RANGE;
 
     return page_list_.AddPage(p, offset);
+}
+
+mxtl::RefPtr<VmObject> VmObject::CreateFromPhysical(mx_paddr_t paddr, mx_size_t size,
+                                                    uint32_t arch_mmu_flags) {
+    size = ROUNDUP_PAGE_SIZE(size);
+
+    auto vmo = Create(PMM_ALLOC_FLAG_ANY, size, arch_mmu_flags);
+    if (vmo && size > 0) {
+        for (size_t count = 0; count < size / PAGE_SIZE; count++) {
+            paddr_t pa = paddr + count * PAGE_SIZE;
+            vm_page_t *page = paddr_to_vm_page(pa);
+            ASSERT(page);
+
+            if (page->state == VM_PAGE_STATE_FREE) {
+                ASSERT(pmm_alloc_range(pa, 1, nullptr) == 1);
+                page->state = VM_PAGE_STATE_WIRED;
+            } else {
+                panic("page used to back static vmo in unusable state: paddr %#" PRIxPTR " state %u\n",
+                       pa, page->state);
+            }
+
+            vmo->AddPage(page, count * PAGE_SIZE);
+        }
+    }
+
+    return vmo;
 }
 
 mxtl::RefPtr<VmObject> VmObject::CreateFromROData(const void* data,
