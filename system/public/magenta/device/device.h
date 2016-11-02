@@ -52,6 +52,45 @@
 #define IOCTL_DEVICE_DEBUG_RESUME \
     IOCTL(IOCTL_KIND_DEFAULT, IOCTL_FAMILY_DEVICE, 6)
 
+// Buffer indices for IOCTL_DEVICE_ALLOC_SHBUF
+enum {
+    DEVICE_SHBUF_READ = 0,
+    DEVICE_SHBUF_WRITE = 1,
+};
+
+typedef struct {
+    size_t packet_size;   // packet size for buffer
+    uint32_t packet_count;  // number of packets in the buffer
+    uint32_t index;         // index of buffer to allocate
+} ioctl_device_shbuf_alloc_args_t;
+
+typedef struct {
+    // set bit to one to queue a packet
+    uint64_t    queue_bits;
+    // set bit to one to mark a packet done
+    uint64_t    done_bits;
+    // return code
+    mx_status_t status;
+} mx_device_shbuf_flags_t;
+
+// Allocates a shared buffer for a driver
+//   in: ioctl_device_shbuf_alloc_args_t
+//   out: handle for buffer VMO
+#define IOCTL_DEVICE_SHBUF_ALLOC \
+    IOCTL(IOCTL_KIND_GET_HANDLE, IOCTL_FAMILY_DEVICE, 7)
+
+// Retrieves the buffer flags VMO for a shared buffer
+//   in: buffer index
+//   out: handle for buffer flags VMO
+#define IOCTL_DEVICE_SHBUF_GET_FLAGS \
+    IOCTL(IOCTL_KIND_GET_HANDLE, IOCTL_FAMILY_DEVICE, 8)
+
+// Queues packets in a shared buffer
+//   in: buffer index
+//   out: none
+#define IOCTL_DEVICE_SHBUF_QUEUE \
+    IOCTL(IOCTL_KIND_DEFAULT, IOCTL_FAMILY_DEVICE, 9)
+
 // Indicates if there's data available to read,
 // or room to write, or an error condition.
 #define DEVICE_SIGNAL_READABLE MX_USER_SIGNAL_0
@@ -78,3 +117,13 @@ IOCTL_WRAPPER(ioctl_device_debug_suspend, IOCTL_DEVICE_DEBUG_SUSPEND);
 
 // ssize_t ioctl_device_debug_resume(int fd);
 IOCTL_WRAPPER(ioctl_device_debug_resume, IOCTL_DEVICE_DEBUG_RESUME);
+
+// ssize_t ioctl_device_shbuf_alloc(int fd, ioctl_device_shbuf_alloc_args_t* args, mx_handle_t* out);
+IOCTL_WRAPPER_INOUT(ioctl_device_shbuf_alloc, IOCTL_DEVICE_SHBUF_ALLOC,
+                    ioctl_device_shbuf_alloc_args_t, mx_handle_t);
+
+// ssize_t ioctl_device_shbuf_get_flags(int fd, uint32_t index, mx_handle_t* out);
+IOCTL_WRAPPER_INOUT(ioctl_device_shbuf_get_flags, IOCTL_DEVICE_SHBUF_GET_FLAGS, uint32_t, mx_handle_t);
+
+// ssize_t ioctl_device_shbuf_queue(int fd, uint32_t index, mx_handle_t* out);
+IOCTL_WRAPPER_IN(ioctl_device_shbuf_queue, IOCTL_DEVICE_SHBUF_QUEUE, uint32_t);

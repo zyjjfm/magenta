@@ -73,6 +73,7 @@ MODULE_SRCS := \
     $(LOCAL_DIR)/devhost-binding.c \
     $(LOCAL_DIR)/devhost-core.c \
     $(LOCAL_DIR)/devhost-rpc-server.c \
+    $(LOCAL_DIR)/devhost-shbuf.c \
     $(DRIVER_SRCS) \
 
 # hexdump, hid, gfx are needed for various drivers

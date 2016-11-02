@@ -19,6 +19,7 @@ __BEGIN_CDECLS;
 typedef struct mx_device mx_device_t;
 typedef struct mx_driver mx_driver_t;
 typedef struct mx_device_prop mx_device_prop_t;
+typedef struct mx_device_shbuf mx_device_shbuf_t;
 
 typedef struct mx_protocol_device mx_protocol_device_t;
 
@@ -72,6 +73,9 @@ struct mx_device {
     // iostate
 
     char name[MX_DEVICE_NAME_MAX + 1];
+
+    mx_device_shbuf_t* shbuf;
+    // support for shared buffers
 };
 
 // mx_device_t objects must be created or initialized by the driver manager's

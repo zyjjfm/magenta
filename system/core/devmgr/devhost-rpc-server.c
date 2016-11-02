@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #include "devhost.h"
+#include "devhost-shbuf.h"
 #include "device-internal.h"
 
 #include <assert.h>
@@ -195,6 +196,42 @@ static ssize_t do_ioctl(mx_device_t* dev, uint32_t op, const void* in_buf, size_
     }
     case IOCTL_DEVICE_DEBUG_RESUME: {
         r = dev->ops->resume(dev);
+        break;
+    }
+    case IOCTL_DEVICE_SHBUF_ALLOC: {
+        if (in_len < sizeof(ioctl_device_shbuf_alloc_args_t)
+            || out_len < sizeof(mx_handle_t)) {
+            r = ERR_BUFFER_TOO_SMALL;
+        } else {
+            const ioctl_device_shbuf_alloc_args_t* args = in_buf;
+            mx_handle_t* result = out_buf;
+            r = devhost_shbuf_alloc(dev, args, result);
+            if (r != NO_ERROR) {
+                *result = MX_HANDLE_INVALID;
+            }
+        }
+        break;
+    }
+    case IOCTL_DEVICE_SHBUF_GET_FLAGS: {
+        if (in_len < sizeof(uint32_t) || out_len < sizeof(mx_handle_t)) {
+            r = ERR_BUFFER_TOO_SMALL;
+        } else {
+            uint32_t index = *((uint32_t *)in_buf);
+            mx_handle_t* result = out_buf;
+            r = devhost_shbuf_get_flags(dev, index, result);
+            if (r != NO_ERROR) {
+                *result = MX_HANDLE_INVALID;
+            }
+        }
+        break;
+    }
+    case IOCTL_DEVICE_SHBUF_QUEUE: {
+        if (in_len < sizeof(uint32_t)) {
+            r = ERR_BUFFER_TOO_SMALL;
+        } else {
+            uint32_t index = *((uint32_t *)in_buf);
+            r = devhost_shbuf_queue(dev, index);
+        }
         break;
     }
     default:

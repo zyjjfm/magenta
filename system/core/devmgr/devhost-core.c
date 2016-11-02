@@ -4,6 +4,7 @@
 
 #include "acpi.h"
 #include "devhost.h"
+#include "devhost-shbuf.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -139,6 +140,7 @@ void dev_ref_release(mx_device_t* dev) {
             printf("device: %p(%s): still has children! not good.\n", dev, dev->name);
         }
 
+        devhost_shbuf_close(dev);
         mx_handle_close(dev->event);
         DM_UNLOCK();
         dev->ops->release(dev);
