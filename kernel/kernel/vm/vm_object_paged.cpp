@@ -176,38 +176,6 @@ vm_page_t* VmObjectPaged::GetPageLocked(uint64_t offset) {
     return page_list_.GetPage(offset);
 }
 
-vm_page_t* VmObjectPaged::FaultPageLocked(uint64_t offset, uint pf_flags) {
-    DEBUG_ASSERT(magic_ == MAGIC);
-    DEBUG_ASSERT(lock_.IsHeld());
-
-    LTRACEF("vmo %p, offset %#" PRIx64 ", pf_flags %#x\n", this, offset, pf_flags);
-
-    if (offset >= size_)
-        return nullptr;
-
-    vm_page_t* p = page_list_.GetPage(offset);
-    if (p)
-        return p;
-
-    // allocate a page
-    paddr_t pa;
-    p = pmm_alloc_page(pmm_alloc_flags_, &pa);
-    if (!p)
-        return nullptr;
-
-    p->state = VM_PAGE_STATE_OBJECT;
-
-    // TODO: remove once pmm returns zeroed pages
-    ZeroPage(pa);
-
-    __UNUSED auto status = page_list_.AddPage(p, offset);
-    DEBUG_ASSERT(status == NO_ERROR);
-
-    LTRACEF("faulted in page %p, pa %#" PRIxPTR "\n", p, pa);
-
-    return p;
-}
-
 status_t VmObjectPaged::CommitRange(uint64_t offset, uint64_t len, uint64_t* committed) {
     DEBUG_ASSERT(magic_ == MAGIC);
     LTRACEF("offset %#" PRIx64 ", len %#" PRIx64 "\n", offset, len);
@@ -586,3 +554,45 @@ status_t VmObjectPaged::Lookup(uint64_t offset, uint64_t len, user_ptr<paddr_t> 
 
     return NO_ERROR;
 }
+
+vm_page_t* VmObjectPaged::FaultPageLocked(uint64_t offset, uint pf_flags) {
+    DEBUG_ASSERT(magic_ == MAGIC);
+    DEBUG_ASSERT(lock_.IsHeld());
+
+    __UNUSED char pf_string[5];
+    TRACEF("vmo %p, offset %#" PRIx64 ", pf_flags %#x (%s)\n", this, offset, pf_flags,
+           vmm_pf_flags_to_string(pf_flags, pf_string));
+
+    if (offset >= size_)
+        return nullptr;
+
+    // if the page is already present in the object, return it
+    vm_page_t* p = page_list_.GetPage(offset);
+    if (p)
+        return p;
+
+    // based on the type of fault, return either a new page or the zero page
+    if ((pf_flags & VMM_PF_FLAG_WRITE) == 0) {
+        TRACEF("returning the zero page\n");
+        return vm_get_zero_page();
+    }
+
+    // allocate a page
+    paddr_t pa;
+    p = pmm_alloc_page(pmm_alloc_flags_, &pa);
+    if (!p)
+        return nullptr;
+
+    p->state = VM_PAGE_STATE_OBJECT;
+
+    // TODO: remove once pmm returns zeroed pages
+    ZeroPage(pa);
+
+    __UNUSED auto status = page_list_.AddPage(p, offset);
+    DEBUG_ASSERT(status == NO_ERROR);
+
+    LTRACEF("faulted in page %p, pa %#" PRIxPTR "\n", p, pa);
+
+    return p;
+}
+

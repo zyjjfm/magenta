@@ -195,7 +195,9 @@ status_t VmRegion::PageFault(vaddr_t va, uint pf_flags) {
     va = ROUNDDOWN(va, PAGE_SIZE);
     uint64_t vmo_offset = va - base_ + object_offset_;
 
-    LTRACEF("%p '%s', vmo_offset %#" PRIx64 ", pf_flags %#x\n", this, name_, vmo_offset, pf_flags);
+    __UNUSED char pf_string[5];
+    TRACEF("%p '%s', vmo_offset %#" PRIx64 ", pf_flags %#x (%s)\n", this, name_, vmo_offset, pf_flags,
+           vmm_pf_flags_to_string(pf_flags, pf_string));
 
     // make sure we have permission to continue
     if ((pf_flags & VMM_PF_FLAG_USER) && (arch_mmu_flags_ & ARCH_MMU_FLAG_PERM_USER) == 0) {
@@ -240,7 +242,7 @@ status_t VmRegion::PageFault(vaddr_t va, uint pf_flags) {
     paddr_t pa;
     status_t err = arch_mmu_query(&aspace_->arch_aspace(), va, &pa, &page_flags);
     if (err >= 0) {
-        LTRACEF("queried va, page at pa %#" PRIxPTR ", flags %#x is already there\n", pa, page_flags);
+        TRACEF("queried va, page at pa %#" PRIxPTR ", flags %#x is already there\n", pa, page_flags);
         if (pa == new_pa) {
             // page was already mapped, are the permissions compatible?
             if (page_flags == arch_mmu_flags_)
@@ -263,7 +265,7 @@ status_t VmRegion::PageFault(vaddr_t va, uint pf_flags) {
         }
     } else {
         // nothing was mapped there before, map it now
-        LTRACEF("mapping pa %#" PRIxPTR " to va %#" PRIxPTR "\n", new_pa, va);
+        TRACEF("mapping pa %#" PRIxPTR " to va %#" PRIxPTR "\n", new_pa, va);
         auto ret = arch_mmu_map(&aspace_->arch_aspace(), va, new_pa, 1, arch_mmu_flags_);
         if (ret < 0) {
             TRACEF("failed to map page\n");
