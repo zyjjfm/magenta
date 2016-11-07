@@ -357,8 +357,11 @@ void PcieBridge::DisableLocked() {
     // forwarding windows and release any bus allocations.
     for (uint i = 0; i < countof(downstream_); ++i) {
         auto downstream_device = GetDownstream(i);
-        if (downstream_device)
+        if (downstream_device) {
+            // XXX hack
+            AutoLock al(downstream_device->dev_lock());
             downstream_device->DisableLocked();
+        }
     }
 
     // Close the windows at the HW level, update the internal bookkeeping to
