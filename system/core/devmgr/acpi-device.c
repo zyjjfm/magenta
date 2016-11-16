@@ -65,6 +65,33 @@ static mx_status_t acpi_get_child_handle_by_hid(acpi_handle_t* h, const char* hi
     return acpi_get_child_handle(h, name, child);
 }
 
+static mx_status_t acpi_init_child_device(mx_device_t* parent, acpi_handle_t* h, const char* hid) {
+    acpi_device_t* dev = calloc(1, sizeof(acpi_device_t));
+
+    char name[4];
+    mx_status_t status = acpi_get_child_handle_by_hid(h, hid, &dev->handle, name);
+    if (status != NO_ERROR) {
+        printf("error getting battery handle %d\n", status);
+        free(dev);
+        return status;
+    }
+
+    memcpy(dev->hid, hid, 7);
+    device_init(&dev->device, drv, name, &acpi_device_proto);
+
+    dev->device.protocol_id = MX_PROTOCOL_ACPI;
+    dev->device.protocol_ops = &acpi_device_acpi_proto;
+
+    dev->device.props = calloc(2, sizeof(mx_device_prop_t));
+    dev->device.props[0].id = BIND_ACPI_HID_0_3;
+    dev->device.props[0].value = htobe32(*((uint32_t *)(hid)));
+    dev->device.props[1].id = BIND_ACPI_HID_4_7;
+    dev->device.props[1].value = htobe32(*((uint32_t *)(hid + 4)));
+    dev->device.prop_count = 2;
+
+    device_add(&dev->device, parent);
+}
+
 #define ACPI_HID_BATTERY "PNP0C0A"
 
 extern mx_handle_t devhost_get_hacpi(void);
